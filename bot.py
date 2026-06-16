@@ -1,3 +1,4 @@
+"""
 All-In-Land Construction — Estimate Bot for Telegram
 Prices jobs conversationally, then generates full branded PDF estimates on demand.
 
@@ -267,3 +268,389 @@ def generate_estimate_pdf(data: dict) -> bytes:
     c.setFillColor(CHARCOAL)
     c.setFont("Helvetica", 7.5)
     c.drawCentredString(
+        W / 2, cy,
+        "www.allinlandconstruction.com  |  (305) 000-0000  |  info@allinlandconstruction.com"
+    )
+
+    # ── Client / Estimate info section ─────────────────────────────────────────
+    info_top = cy - 18
+    col2_x = W / 2 + 10
+
+    # Left column: Prepared for
+    c.setFillColor(GOLD)
+    c.setFont("Helvetica-Bold", 7.5)
+    c.drawString(margin, info_top, "PREPARED FOR")
+
+    c.setFillColor(TEXT_DARK)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(margin, info_top - 13, data.get("client_name", "—"))
+
+    c.setFont("Helvetica", 9)
+    addr = data.get("client_address", "")
+    addr_y = info_top - 25
+    for part in addr.split(",")[:3]:
+        c.drawString(margin, addr_y, part.strip())
+        addr_y -= 12
+
+    # Right column: Estimate details
+    def info_row(label, value, y):
+        c.setFillColor(GOLD)
+        c.setFont("Helvetica-Bold", 7.5)
+        c.drawString(col2_x, y, label)
+        c.setFillColor(TEXT_DARK)
+        c.setFont("Helvetica", 9)
+        c.drawString(col2_x, y - 11, value)
+
+    info_row("ESTIMATE NO.", data.get("estimate_number", "EST-2026-XXX"), info_top)
+    info_row("DATE", data.get("date", date.today().strftime("%B %d, %Y")), info_top - 28)
+    info_row("VALID FOR", "30 days", info_top - 56)
+
+    # ── Gray separator ─────────────────────────────────────────────────────────
+    sep_y = info_top - 82
+    c.setStrokeColor(MED_GRAY)
+    c.setLineWidth(0.5)
+    c.line(margin, sep_y, W - margin, sep_y)
+
+    # ── Scope of Work ──────────────────────────────────────────────────────────
+    scope_top = sep_y - 14
+    c.setFillColor(CHARCOAL)
+    c.setFont("Helvetica-Bold", 9.5)
+    c.drawString(margin, scope_top, "SCOPE OF WORK")
+
+    c.setFillColor(TEXT_DARK)
+    c.setFont("Helvetica", 8.5)
+    scope_text = data.get("scope_description", "")
+    wrapped = simpleSplit(scope_text, "Helvetica", 8.5, content_w)
+    scope_y = scope_top - 13
+    for line in wrapped[:4]:
+        c.drawString(margin, scope_y, line)
+        scope_y -= 11
+
+    # ── Line items table ───────────────────────────────────────────────────────
+    table_top = scope_y - 14
+    col_x = [margin, margin + 275, margin + 340, margin + 440]
+    col_w = [275, 65, 100, 96]
+    headers_row = ["DESCRIPTION", "QTY", "UNIT PRICE", "TOTAL"]
+
+    # Header row background
+    c.setFillColor(CHARCOAL)
+    c.rect(margin, table_top - 4, content_w, 16, fill=1, stroke=0)
+    c.setFillColor(WHITE)
+    c.setFont("Helvetica-Bold", 8)
+    for i, h in enumerate(headers_row):
+        if i == 0:
+            c.drawString(col_x[i] + 4, table_top + 2, h)
+        else:
+            c.drawRightString(col_x[i] + col_w[i] - 4, table_top + 2, h)
+
+    # Data rows
+    row_y = table_top - 18
+    items = data.get("line_items", [])
+    for idx, item in enumerate(items):
+        if idx % 2 == 0:
+            c.setFillColor(LIGHT_GRAY)
+            c.rect(margin, row_y - 3, content_w, 13, fill=1, stroke=0)
+
+        c.setFillColor(TEXT_DARK)
+        c.setFont("Helvetica", 8.5)
+
+        desc = str(item.get("description", ""))[:58]
+        qty  = str(item.get("qty", ""))
+        up   = item.get("unit_price", 0) or 0
+        tot  = item.get("total", 0) or 0
+
+        c.drawString(col_x[0] + 4, row_y, desc)
+        c.drawRightString(col_x[1] + col_w[1] - 4, row_y, qty)
+        up_str = f"${up:,.2f}" if up else "—"
+        c.drawRightString(col_x[2] + col_w[2] - 4, row_y, up_str)
+        c.drawRightString(col_x[3] + col_w[3] - 4, row_y, f"${tot:,.2f}")
+        row_y -= 14
+
+    # ── Totals ─────────────────────────────────────────────────────────────────
+    totals_top = row_y - 8
+    c.setStrokeColor(MED_GRAY)
+    c.setLineWidth(0.5)
+    c.line(margin, totals_top + 6, W - margin, totals_top + 6)
+
+    tx = W - margin - 210
+    tr = W - margin
+
+    def total_row(label, amount, y, bold=False, highlight=False):
+        if highlight:
+            c.setFillColor(GOLD)
+            c.rect(tx - 6, y - 3, 216, 15, fill=1, stroke=0)
+            c.setFillColor(CHARCOAL)
+        else:
+            c.setFillColor(TEXT_DARK)
+        font = "Helvetica-Bold" if (bold or highlight) else "Helvetica"
+        c.setFont(font, 9)
+        c.drawString(tx, y, label)
+        c.drawRightString(tr, y, f"${amount:,.2f}")
+
+    total_row("Direct Cost", data.get("direct_cost", 0), totals_top)
+    total_row("Management Fee (15%)", data.get("management_fee", 0), totals_top - 15)
+    total_row("CLIENT PRICE", data.get("client_price", 0), totals_top - 35, highlight=True)
+
+    # ── Notes ──────────────────────────────────────────────────────────────────
+    notes = data.get("notes", "").strip()
+    notes_top = totals_top - 60
+    if notes:
+        c.setStrokeColor(MED_GRAY)
+        c.line(margin, notes_top + 6, W - margin, notes_top + 6)
+        c.setFillColor(CHARCOAL)
+        c.setFont("Helvetica-Bold", 8.5)
+        c.drawString(margin, notes_top, "NOTES & ASSUMPTIONS")
+        c.setFillColor(TEXT_DARK)
+        c.setFont("Helvetica", 8)
+        note_lines = simpleSplit(notes, "Helvetica", 8, content_w)
+        ny = notes_top - 12
+        for line in note_lines[:5]:
+            c.drawString(margin, ny, line)
+            ny -= 10
+
+    # ── Acceptance block ───────────────────────────────────────────────────────
+    sign_y = 100
+    c.setStrokeColor(MED_GRAY)
+    c.line(margin, sign_y + 6, W - margin, sign_y + 6)
+    c.setFillColor(CHARCOAL)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(margin, sign_y, "AUTHORIZATION TO PROCEED")
+    c.setFillColor(TEXT_DARK)
+    c.setFont("Helvetica", 8)
+    c.drawString(margin, sign_y - 12,
+        "By signing below, client authorizes All-In-Land Construction & Remodeling to proceed per this estimate.")
+    # Signature lines
+    sig_y = sign_y - 34
+    c.setStrokeColor(CHARCOAL)
+    c.setLineWidth(0.5)
+    c.line(margin, sig_y, margin + 180, sig_y)
+    c.line(W / 2 + 10, sig_y, W / 2 + 190, sig_y)
+    c.setFont("Helvetica", 7.5)
+    c.setFillColor(CHARCOAL)
+    c.drawString(margin, sig_y - 10, "Client Signature")
+    c.drawString(W / 2 + 10, sig_y - 10, "Date")
+
+    # ── Footer ─────────────────────────────────────────────────────────────────
+    c.setFillColor(CHARCOAL)
+    c.rect(0, 0, W, 42, fill=1, stroke=0)
+    c.setFillColor(GOLD)
+    c.setFont("Helvetica-Bold", 7)
+    c.drawCentredString(W / 2, 26, "ALL-IN-LAND CONSTRUCTION & REMODELING")
+    c.setFillColor(WHITE)
+    c.setFont("Helvetica", 7)
+    c.drawCentredString(W / 2, 14,
+        "This estimate is valid for 30 days · 50% deposit required to begin · "
+        "Licensed & Insured · Florida")
+
+    c.save()
+    return buf.getvalue()
+
+
+# ── Extract PDF data from conversation ────────────────────────────────────────
+def extract_pdf_data(history: list[dict], client_info: str) -> dict:
+    """Call Claude to extract structured JSON from the conversation."""
+    user_msg = (
+        f"Client information provided: {client_info}\n\n"
+        "Now extract the estimate data from this conversation and return JSON only."
+    )
+    response = anthropic_client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2048,
+        system=PDF_EXTRACT_PROMPT,
+        messages=history + [{"role": "user", "content": user_msg}],
+    )
+    raw = response.content[0].text.strip()
+    # Strip markdown fences if present
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return json.loads(raw)
+
+
+# ── Handlers ──────────────────────────────────────────────────────────────────
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    next_num = peek_next_number()
+    await update.message.reply_text(
+        "👋 Hey Valerio! I'm your All-In-Land estimate bot.\n\n"
+        "Describe a job and I'll break down the costs with your real rates.\n"
+        "Example: *500 sq ft turf job with demo, 2 workers*\n\n"
+        "When you're happy with the numbers, type */pdf* and I'll send you "
+        "the full branded PDF estimate ready for the client.\n\n"
+        f"Next estimate number: *{next_num}*\n"
+        "To override the sequence: `/setnumber 15` (sets next → EST-YYYY-015)\n\n"
+        "Type /reset to start a fresh conversation.",
+        parse_mode="Markdown",
+    )
+
+
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    conversation_histories.pop(user_id, None)
+    context.user_data.clear()
+    await update.message.reply_text("✅ Conversation cleared. Start fresh!")
+
+
+async def pdf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if ALLOWED_USER_ID and user_id != ALLOWED_USER_ID:
+        await update.message.reply_text("⛔ Sorry, this bot is private.")
+        return
+
+    history = get_history(user_id)
+    if len(history) < 2:
+        await update.message.reply_text(
+            "📋 I need to price the job first before generating the PDF.\n"
+            "Describe the job and I'll calculate the costs, then type /pdf."
+        )
+        return
+
+    est_num = next_estimate_number()
+    context.user_data["awaiting_pdf_info"] = True
+    context.user_data["estimate_number"] = est_num
+    await update.message.reply_text(
+        f"📄 Ready to generate *{est_num}*!\n\n"
+        "Please send me:\n"
+        "• *Client name*\n"
+        "• *Client address*\n\n"
+        "Reply with both — one per line.",
+        parse_mode="Markdown",
+    )
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if ALLOWED_USER_ID and user_id != ALLOWED_USER_ID:
+        await update.message.reply_text("⛔ Sorry, this bot is private.")
+        return
+
+    user_text = update.message.text.strip()
+    if not user_text:
+        return
+
+    # ── PDF info collection flow ───────────────────────────────────────────────
+    if context.user_data.get("awaiting_pdf_info"):
+        context.user_data["awaiting_pdf_info"] = False
+        est_num = context.user_data.pop("estimate_number", peek_next_number())
+        client_info = f"Estimate number: {est_num}\n{user_text}"
+
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action="upload_document"
+        )
+
+        history = get_history(user_id)
+        try:
+            data = extract_pdf_data(history, client_info)
+        except Exception as e:
+            logger.error("JSON extraction error: %s", e)
+            await update.message.reply_text(
+                "⚠️ Couldn't extract the estimate data. "
+                "Make sure the job has been fully priced, then try /pdf again."
+            )
+            return
+
+        # Fill in date if missing
+        if not data.get("date"):
+            data["date"] = date.today().strftime("%B %d, %Y")
+
+        try:
+            pdf_bytes = generate_estimate_pdf(data)
+        except Exception as e:
+            logger.error("PDF generation error: %s", e)
+            await update.message.reply_text(
+                "⚠️ PDF generation failed. Please try again."
+            )
+            return
+
+        est_num = data.get("estimate_number", "estimate")
+        filename = f"{est_num.replace(' ', '_')}.pdf"
+
+        await update.message.reply_document(
+            document=BytesIO(pdf_bytes),
+            filename=filename,
+            caption=f"✅ {est_num} — {data.get('client_name', '')} · Client price: ${data.get('client_price', 0):,.0f}",
+        )
+        return
+
+    # ── Normal pricing conversation ────────────────────────────────────────────
+    history = get_history(user_id)
+    history.append({"role": "user", "content": user_text})
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-opus-4-8",
+            max_tokens=2048,
+            system=SYSTEM_PROMPT,
+            messages=history,
+        )
+        reply = response.content[0].text
+    except Exception as e:
+        logger.error("Claude API error: %s", e)
+        reply = "⚠️ Something went wrong. Try again in a moment."
+
+    history.append({"role": "assistant", "content": reply})
+    trim_history(user_id)
+
+    for chunk in split_text(reply, 4096):
+        await update.message.reply_text(chunk, parse_mode="Markdown")
+
+
+async def setnumber_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Usage: /setnumber 15  → next PDF will be EST-YYYY-015"""
+    user_id = update.effective_user.id
+    if ALLOWED_USER_ID and user_id != ALLOWED_USER_ID:
+        await update.message.reply_text("⛔ Sorry, this bot is private.")
+        return
+
+    args = context.args
+    if not args or not args[0].isdigit():
+        next_num = peek_next_number()
+        await update.message.reply_text(
+            f"Usage: `/setnumber 15` — next estimate will be EST-YYYY-015\n"
+            f"Current next number: *{next_num}*",
+            parse_mode="Markdown",
+        )
+        return
+
+    seq = int(args[0])
+    set_estimate_sequence(seq)
+    next_num = peek_next_number()
+    await update.message.reply_text(
+        f"✅ Sequence updated. Next estimate: *{next_num}*",
+        parse_mode="Markdown",
+    )
+
+
+def split_text(text: str, limit: int) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+    chunks, current = [], ""
+    for line in text.splitlines(keepends=True):
+        if len(current) + len(line) > limit:
+            chunks.append(current)
+            current = line
+        else:
+            current += line
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+def main():
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("reset", reset))
+    app.add_handler(CommandHandler("pdf", pdf_command))
+    app.add_handler(CommandHandler("setnumber", setnumber_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    logger.info("All-In-Land Estimate Bot is running…")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+if __name__ == "__main__":
+    main()
