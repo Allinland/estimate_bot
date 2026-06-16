@@ -1,1 +1,1 @@
-worker: /app/.venv/bin/python bot.py
+worker: pip install reportlab --quiet && python bot.py
